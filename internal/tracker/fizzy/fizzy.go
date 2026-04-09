@@ -129,8 +129,9 @@ func (t *Tracker) UpdateItemState(id, state string) error {
 }
 
 type envelope struct {
-	OK   bool `json:"ok"`
-	Data any  `json:"data"`
+	OK      bool `json:"ok"`
+	Success bool `json:"success"`
+	Data    any  `json:"data"`
 }
 
 func (t *Tracker) fetchBoardItems(args []string) ([]model.Item, error) {
@@ -210,7 +211,6 @@ func defaultRunner(args []string, env []string) ([]byte, error) {
 	base := append([]string{}, os.Environ()...)
 	base = append(base, env...)
 	cmdArgs := append([]string{}, args...)
-	cmdArgs = append(cmdArgs, "--json")
 	cmd := exec.Command("fizzy", cmdArgs...)
 	cmd.Env = base
 	out, err := cmd.CombinedOutput()

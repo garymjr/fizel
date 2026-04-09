@@ -48,3 +48,34 @@ func TestFetchCandidateItemsNormalizesCard(t *testing.T) {
 		t.Fatalf("unexpected assignee %q", item.AssigneeID)
 	}
 }
+
+func TestFetchCandidateItemsAcceptsSuccessEnvelope(t *testing.T) {
+	runner := func(args []string, env []string) ([]byte, error) {
+		payload := map[string]any{
+			"success": true,
+			"data": []map[string]any{{
+				"number": 7,
+				"title":  "Ship fix",
+				"board":  map[string]any{"id": "board-1", "name": "Platform"},
+			}},
+		}
+		return json.Marshal(payload)
+	}
+	tracker := NewWithRunner(config.TrackerSettings{
+		Kind:    "fizzy",
+		APIKey:  "token",
+		APIURL:  "https://app.fizzy.do",
+		BoardID: "board-1",
+	}, runner)
+
+	items, err := tracker.FetchCandidateItems()
+	if err != nil {
+		t.Fatalf("FetchCandidateItems() error = %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+	if items[0].ID != "board-1:7" {
+		t.Fatalf("unexpected item ID %q", items[0].ID)
+	}
+}
