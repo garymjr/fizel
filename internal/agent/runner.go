@@ -2,8 +2,6 @@ package agent
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"github.com/gmurray/fizel/internal/codex"
 	"github.com/gmurray/fizel/internal/config"
@@ -36,14 +34,8 @@ func (r *Runner) Run(ctx context.Context, item model.Item, prompt string, onEven
 	}
 	defer session.Stop()
 
-	for turn := 1; turn <= r.settings.Agent.MaxTurns; turn++ {
-		turnPrompt := prompt
-		if turn > 1 {
-			turnPrompt = strings.TrimSpace(fmt.Sprintf("%s\n\nContinuation turn %d.", prompt, turn))
-		}
-		if err := session.RunTurn(turnPrompt, item, onEvent); err != nil {
-			return workspacePath, err
-		}
+	if err := session.RunTurn(prompt, item, onEvent); err != nil {
+		return workspacePath, err
 	}
 	return workspacePath, nil
 }
