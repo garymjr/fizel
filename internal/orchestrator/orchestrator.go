@@ -288,7 +288,11 @@ func (s *Service) repoForItem(item model.Item) (config.ResolvedRepo, error) {
 		}
 	}
 	if len(keys) == 0 {
-		return config.ResolvedRepo{}, fmt.Errorf("item is missing repo:<key> label")
+		repo, err := s.repoForBoardID(boardIDFromItem(item.ID))
+		if err != nil {
+			return config.ResolvedRepo{}, fmt.Errorf("item is missing repo:<key> label: %w", err)
+		}
+		return repo, nil
 	}
 	if len(keys) > 1 {
 		return config.ResolvedRepo{}, fmt.Errorf("item has multiple repo labels: %s", strings.Join(keys, ", "))
@@ -298,6 +302,37 @@ func (s *Service) repoForItem(item model.Item) (config.ResolvedRepo, error) {
 		return config.ResolvedRepo{}, fmt.Errorf("watched repo %q not found", keys[0])
 	}
 	return repo, nil
+}
+
+func (s *Service) repoForBoardID(boardID string) (config.ResolvedRepo, error) {
+	boardID = strings.TrimSpace(boardID)
+	if boardID == "" {
+		return config.ResolvedRepo{}, fmt.Errorf("item id does not include a board id")
+	}
+	var matched config.ResolvedRepo
+	found := false
+	for _, repo := range s.repos {
+		if strings.TrimSpace(repo.Settings.Tracker.BoardID) != boardID {
+			continue
+		}
+		if found {
+			return config.ResolvedRepo{}, fmt.Errorf("multiple watched repos use board %q", boardID)
+		}
+		matched = repo
+		found = true
+	}
+	if !found {
+		return config.ResolvedRepo{}, fmt.Errorf("no watched repo configured for board %q", boardID)
+	}
+	return matched, nil
+}
+
+func boardIDFromItem(id string) string {
+	boardID, _, ok := strings.Cut(strings.TrimSpace(id), ":")
+	if !ok {
+		return ""
+	}
+	return boardID
 }
 
 func (s *Service) repoForRetry(entry retryItem) (config.ResolvedRepo, error) {

@@ -141,7 +141,12 @@ func TestRepoForItemRejectsMissingLabel(t *testing.T) {
 		config.Settings{},
 		workflow.Loaded{},
 		map[string]config.ResolvedRepo{
-			"api": {Key: "api"},
+			"api": {
+				Key: "api",
+				Settings: config.Settings{
+					Tracker: config.TrackerSettings{BoardID: "board-1"},
+				},
+			},
 		},
 		memory.New(),
 		observability.NewTerminalForWriter(config.Settings{
@@ -150,8 +155,12 @@ func TestRepoForItemRejectsMissingLabel(t *testing.T) {
 		nil,
 	)
 
-	if _, err := service.repoForItem(model.Item{ID: "board-1:42", Identifier: "board-1:42"}); err == nil {
-		t.Fatalf("expected missing repo label error")
+	repo, err := service.repoForItem(model.Item{ID: "board-1:42", Identifier: "board-1:42"})
+	if err != nil {
+		t.Fatalf("expected board fallback resolution, got error %v", err)
+	}
+	if repo.Key != "api" {
+		t.Fatalf("expected api repo, got %q", repo.Key)
 	}
 }
 
@@ -176,6 +185,55 @@ func TestRepoForItemRejectsMultipleLabels(t *testing.T) {
 		Labels:     []string{"repo:api", "repo:web"},
 	}); err == nil {
 		t.Fatalf("expected multiple repo label error")
+	}
+}
+
+func TestRepoForItemRejectsMissingLabelWithoutBoardFallback(t *testing.T) {
+	service := New(
+		config.Settings{},
+		workflow.Loaded{},
+		map[string]config.ResolvedRepo{
+			"api": {Key: "api"},
+		},
+		memory.New(),
+		observability.NewTerminalForWriter(config.Settings{
+			Agent: config.AgentSettings{MaxConcurrentAgents: 1},
+		}, &bytes.Buffer{}),
+		nil,
+	)
+
+	if _, err := service.repoForItem(model.Item{ID: "board-1:42", Identifier: "board-1:42"}); err == nil {
+		t.Fatalf("expected missing repo label error")
+	}
+}
+
+func TestRepoForItemRejectsAmbiguousBoardFallback(t *testing.T) {
+	service := New(
+		config.Settings{},
+		workflow.Loaded{},
+		map[string]config.ResolvedRepo{
+			"api": {
+				Key: "api",
+				Settings: config.Settings{
+					Tracker: config.TrackerSettings{BoardID: "board-1"},
+				},
+			},
+			"web": {
+				Key: "web",
+				Settings: config.Settings{
+					Tracker: config.TrackerSettings{BoardID: "board-1"},
+				},
+			},
+		},
+		memory.New(),
+		observability.NewTerminalForWriter(config.Settings{
+			Agent: config.AgentSettings{MaxConcurrentAgents: 1},
+		}, &bytes.Buffer{}),
+		nil,
+	)
+
+	if _, err := service.repoForItem(model.Item{ID: "board-1:42", Identifier: "board-1:42"}); err == nil {
+		t.Fatalf("expected ambiguous board fallback error")
 	}
 }
 
