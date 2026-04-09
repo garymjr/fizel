@@ -15,6 +15,7 @@ type dashboardModel struct {
 	settings       config.Settings
 	snapshot       Snapshot
 	now            func() time.Time
+	currentTime    time.Time
 	renderInterval time.Duration
 	width          int
 	height         int
@@ -29,6 +30,7 @@ func newDashboardModel(settings config.Settings, snapshot Snapshot, now func() t
 		settings:       settings,
 		snapshot:       snapshot,
 		now:            now,
+		currentTime:    now(),
 		renderInterval: renderInterval,
 		width:          110,
 		styles:         newDashboardStyles(),
@@ -50,6 +52,7 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 	case tickMsg:
+		m.currentTime = time.Time(msg)
 		return m, tickCmd(m.renderInterval)
 	case tea.KeyMsg:
 		switch msg.String() {

@@ -209,7 +209,23 @@ func (m dashboardModel) nextRefreshLabel() string {
 	if m.snapshot.Polling {
 		return "checking now"
 	}
-	seconds := max(1, int(time.Duration(m.settings.Polling.IntervalMS)*time.Millisecond/time.Second))
+	interval := time.Duration(m.settings.Polling.IntervalMS) * time.Millisecond
+	if interval <= 0 {
+		return "-"
+	}
+	if m.snapshot.LastRefreshAt.IsZero() {
+		seconds := max(1, int(interval/time.Second))
+		return fmt.Sprintf("%ds", seconds)
+	}
+	now := m.currentTime
+	if now.IsZero() {
+		now = m.now()
+	}
+	remaining := m.snapshot.LastRefreshAt.Add(interval).Sub(now)
+	if remaining <= 0 {
+		return "now"
+	}
+	seconds := max(1, int((remaining+time.Second-1)/time.Second))
 	return fmt.Sprintf("%ds", seconds)
 }
 

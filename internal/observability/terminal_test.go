@@ -71,6 +71,24 @@ func TestTerminalFormatWideSnapshotShowsSideBySideTables(t *testing.T) {
 	assertContains(t, rendered, "18s")
 }
 
+func TestTerminalFormatShowsLiveRefreshCountdown(t *testing.T) {
+	term := NewTerminalForWriter(config.Settings{
+		Polling: config.PollingSettings{IntervalMS: 5_000},
+		Agent:   config.AgentSettings{MaxConcurrentAgents: 4},
+	}, nil)
+	lastRefreshAt := time.Unix(1_700_000_000, 0)
+
+	rendered := stripANSI(term.format(Snapshot{
+		LastRefreshAt: lastRefreshAt,
+	}, lastRefreshAt.Add(1100*time.Millisecond), 110))
+	assertContains(t, rendered, "REFRESH: 4s")
+
+	rendered = stripANSI(term.format(Snapshot{
+		LastRefreshAt: lastRefreshAt,
+	}, lastRefreshAt.Add(4100*time.Millisecond), 110))
+	assertContains(t, rendered, "REFRESH: 1s")
+}
+
 func TestTerminalFormatNarrowSnapshotStacksPanelsAndDropsLowValueColumns(t *testing.T) {
 	term := NewTerminalForWriter(config.Settings{
 		Polling: config.PollingSettings{IntervalMS: 5_000},

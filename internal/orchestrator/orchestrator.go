@@ -227,6 +227,10 @@ func (s *Service) activeState(state string, settings config.Settings) bool {
 func (s *Service) render(polling bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	lastRefreshAt := time.Time{}
+	if !polling {
+		lastRefreshAt = time.Now()
+	}
 	running := make([]observability.RunningItem, 0, len(s.running))
 	for _, entry := range s.running {
 		running = append(running, observability.RunningItem{
@@ -261,11 +265,12 @@ func (s *Service) render(polling bool) {
 	}
 	sort.Slice(watched, func(i, j int) bool { return watched[i].Key < watched[j].Key })
 	s.term.Render(observability.Snapshot{
-		Polling:      polling,
-		Running:      running,
-		Retrying:     retrying,
-		TrackerMode:  mode,
-		WatchedRepos: watched,
+		Polling:       polling,
+		LastRefreshAt: lastRefreshAt,
+		Running:       running,
+		Retrying:      retrying,
+		TrackerMode:   mode,
+		WatchedRepos:  watched,
 	})
 }
 

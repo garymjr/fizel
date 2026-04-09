@@ -14,11 +14,12 @@ import (
 )
 
 type Snapshot struct {
-	Polling      bool
-	Running      []RunningItem
-	Retrying     []RetryItem
-	TrackerMode  string
-	WatchedRepos []WatchedRepoStatus
+	Polling       bool
+	LastRefreshAt time.Time
+	Running       []RunningItem
+	Retrying      []RetryItem
+	TrackerMode   string
+	WatchedRepos  []WatchedRepoStatus
 }
 
 type WatchedRepoStatus struct {
