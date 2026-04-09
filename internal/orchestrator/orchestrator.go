@@ -32,6 +32,7 @@ type Service struct {
 type runningItem struct {
 	item      model.Item
 	startedAt time.Time
+	lastEvent string
 }
 
 type retryItem struct {
@@ -74,7 +75,7 @@ func (s *Service) Run(ctx context.Context) error {
 }
 
 func (s *Service) dispatch(ctx context.Context) error {
-	s.render(true, "")
+	s.render(true)
 	s.dispatchDueRetries(ctx)
 	items, err := s.tracker.FetchCandidateItems()
 	if err != nil {
@@ -92,7 +93,7 @@ func (s *Service) dispatch(ctx context.Context) error {
 		}
 		s.startItem(ctx, item)
 	}
-	s.render(false, "")
+	s.render(false)
 	return nil
 }
 
@@ -104,10 +105,13 @@ func (s *Service) startItem(ctx context.Context, item model.Item) {
 	go func() {
 		manager := workspace.New(s.settings)
 		runner := agent.New(s.settings, manager)
-		lastEvent := ""
 		path, err := runner.Run(ctx, item, s.promptFor(item), func(event codex.Event) {
-			lastEvent = event.Event
-			s.render(true, lastEvent)
+			s.mu.Lock()
+			entry := s.running[item.ID]
+			entry.lastEvent = event.Event
+			s.running[item.ID] = entry
+			s.mu.Unlock()
+			s.render(true)
 		})
 		s.mu.Lock()
 		delete(s.running, item.ID)
@@ -118,7 +122,7 @@ func (s *Service) startItem(ctx context.Context, item model.Item) {
 			return
 		}
 		s.logger.Info("agent run completed", "item", item.Identifier, "workspace", path)
-		s.render(false, lastEvent)
+		s.render(false)
 	}()
 }
 
@@ -190,7 +194,7 @@ func (s *Service) activeState(state string) bool {
 	return false
 }
 
-func (s *Service) render(polling bool, lastEvent string) {
+func (s *Service) render(polling bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	running := make([]observability.RunningItem, 0, len(s.running))
@@ -199,6 +203,7 @@ func (s *Service) render(polling bool, lastEvent string) {
 			Identifier: entry.item.Identifier,
 			State:      entry.item.State,
 			StartedAt:  entry.startedAt,
+			LastEvent:  entry.lastEvent,
 		})
 	}
 	retrying := make([]observability.RetryItem, 0, len(s.retrying))
@@ -218,6 +223,5 @@ func (s *Service) render(polling bool, lastEvent string) {
 		Running:       running,
 		Retrying:      retrying,
 		TrackerHeader: header,
-		LastEvent:     lastEvent,
 	})
 }

@@ -39,11 +39,11 @@ func TestTerminalFormatActiveSnapshot(t *testing.T) {
 	lines := term.format(Snapshot{
 		Polling:       true,
 		TrackerHeader: "Fizzy board board-1",
-		LastEvent:     "dispatching",
 		Running: []RunningItem{{
 			Identifier: "board-1:42",
 			State:      "In Progress",
 			StartedAt:  now.Add(-12 * time.Second),
+			LastEvent:  "dispatching",
 		}},
 		Retrying: []RetryItem{{
 			Identifier: "board-1:9",

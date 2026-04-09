@@ -17,13 +17,13 @@ type Snapshot struct {
 	Running       []RunningItem
 	Retrying      []RetryItem
 	TrackerHeader string
-	LastEvent     string
 }
 
 type RunningItem struct {
 	Identifier string
 	State      string
 	StartedAt  time.Time
+	LastEvent  string
 }
 
 type RetryItem struct {
@@ -80,7 +80,7 @@ func (t *Terminal) format(snapshot Snapshot, now time.Time) []string {
 		colorize("├─ Running", ansiBold),
 		"│",
 	}
-	lines = append(lines, t.runningLines(snapshot.Running, snapshot.LastEvent, now)...)
+	lines = append(lines, t.runningLines(snapshot.Running, now)...)
 	lines = append(lines, "│", "├─ Backoff queue", "│")
 	lines = append(lines, t.retryLines(snapshot.Retrying, now)...)
 	lines = append(lines, "╰")
@@ -95,7 +95,7 @@ func (t *Terminal) nextRefreshLabel(polling bool) string {
 	return fmt.Sprintf("%ds", seconds)
 }
 
-func (t *Terminal) runningLines(running []RunningItem, lastEvent string, now time.Time) []string {
+func (t *Terminal) runningLines(running []RunningItem, now time.Time) []string {
 	lines := []string{
 		colorize(fmt.Sprintf("│ %-24s %-16s %-8s %s", "ID", "STATE", "AGE", "EVENT"), ansiGray),
 		colorize(fmt.Sprintf("│ %-24s %-16s %-8s %s", strings.Repeat("─", 24), strings.Repeat("─", 16), strings.Repeat("─", 8), strings.Repeat("─", 24)), ansiGray),
@@ -103,11 +103,11 @@ func (t *Terminal) runningLines(running []RunningItem, lastEvent string, now tim
 	if len(running) == 0 {
 		return append(lines, colorize("│ No active agents", ansiGray))
 	}
-	event := strings.TrimSpace(lastEvent)
-	if event == "" {
-		event = "-"
-	}
 	for _, item := range running {
+		event := strings.TrimSpace(item.LastEvent)
+		if event == "" {
+			event = "-"
+		}
 		lines = append(lines, fmt.Sprintf(
 			"%s %s %s %s %s",
 			colorize("│", ansiGray),
