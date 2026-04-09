@@ -34,3 +34,37 @@ func TestResolvePathExpandsHome(t *testing.T) {
 		t.Fatalf("resolvePath() = %q", got)
 	}
 }
+
+func TestFromLoadedDefaultsPostRunState(t *testing.T) {
+	settings, err := FromLoaded(workflow.Loaded{
+		Config: map[string]any{
+			"tracker": map[string]any{
+				"kind":     "memory",
+				"board_id": "ignored",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("FromLoaded() error = %v", err)
+	}
+	if settings.Tracker.PostRunState != "Human Review" {
+		t.Fatalf("expected default post-run state, got %q", settings.Tracker.PostRunState)
+	}
+}
+
+func TestFromLoadedAllowsPostRunStateOverride(t *testing.T) {
+	settings, err := FromLoaded(workflow.Loaded{
+		Config: map[string]any{
+			"tracker": map[string]any{
+				"kind":           "memory",
+				"post_run_state": "Ready for QA",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("FromLoaded() error = %v", err)
+	}
+	if settings.Tracker.PostRunState != "Ready for QA" {
+		t.Fatalf("expected overridden post-run state, got %q", settings.Tracker.PostRunState)
+	}
+}

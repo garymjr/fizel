@@ -121,9 +121,22 @@ func (s *Service) startItem(ctx context.Context, item model.Item) {
 			s.scheduleRetry(item)
 			return
 		}
+		if err := s.transitionCompletedItem(item); err != nil {
+			s.logger.Error("tracker completion transition failed", "item", item.Identifier, "state", s.settings.Tracker.PostRunState, "error", err)
+			s.scheduleRetry(item)
+			return
+		}
 		s.logger.Info("agent run completed", "item", item.Identifier, "workspace", path)
 		s.render(false)
 	}()
+}
+
+func (s *Service) transitionCompletedItem(item model.Item) error {
+	target := strings.TrimSpace(s.settings.Tracker.PostRunState)
+	if target == "" || strings.EqualFold(target, item.State) {
+		return nil
+	}
+	return s.tracker.UpdateItemState(item.ID, target)
 }
 
 func (s *Service) promptFor(item model.Item) string {

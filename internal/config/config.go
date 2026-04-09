@@ -33,6 +33,7 @@ type TrackerSettings struct {
 	Assignee       string   `yaml:"assignee"`
 	ActiveStates   []string `yaml:"active_states"`
 	TerminalStates []string `yaml:"terminal_states"`
+	PostRunState   string   `yaml:"post_run_state"`
 }
 
 type PollingSettings struct {
@@ -104,6 +105,7 @@ func defaultSettings() Settings {
 			APIURL:         "https://app.fizzy.do",
 			ActiveStates:   []string{"Todo", "In Progress"},
 			TerminalStates: []string{"Done", "Not Now"},
+			PostRunState:   "Human Review",
 		},
 		Polling:   PollingSettings{IntervalMS: 30_000},
 		Workspace: WorkspaceSettings{Root: filepath.Join(os.TempDir(), "fizel-workspaces")},
@@ -164,6 +166,7 @@ func applyEnvFallbacks(s *Settings) {
 
 func normalize(s *Settings) error {
 	s.Tracker.Kind = strings.TrimSpace(strings.ToLower(s.Tracker.Kind))
+	s.Tracker.PostRunState = strings.TrimSpace(s.Tracker.PostRunState)
 	s.Workspace.Root = filepath.Clean(s.Workspace.Root)
 	if s.Tracker.Kind == "" {
 		return errors.New("tracker.kind is required")
