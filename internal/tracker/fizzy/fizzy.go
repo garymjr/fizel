@@ -17,23 +17,56 @@ import (
 type Runner func(args []string, env []string) ([]byte, error)
 
 type Tracker struct {
-	settings config.TrackerSettings
-	runner   Runner
+	settings        config.TrackerSettings
+	settingsByBoard map[string]config.TrackerSettings
+	runner          Runner
 }
 
 func NewFromSettings(settings config.TrackerSettings) *Tracker {
 	return &Tracker{
 		settings: settings,
-		runner:   defaultRunner,
+		settingsByBoard: map[string]config.TrackerSettings{
+			settings.BoardID: settings,
+		},
+		runner: defaultRunner,
 	}
 }
 
 func NewWithRunner(settings config.TrackerSettings, runner Runner) *Tracker {
-	return &Tracker{settings: settings, runner: runner}
+	return &Tracker{
+		settings: settings,
+		settingsByBoard: map[string]config.TrackerSettings{
+			settings.BoardID: settings,
+		},
+		runner: runner,
+	}
+}
+
+func NewFromMany(settings []config.TrackerSettings) *Tracker {
+	if len(settings) == 0 {
+		return &Tracker{runner: defaultRunner}
+	}
+	byBoard := make(map[string]config.TrackerSettings, len(settings))
+	for _, entry := range settings {
+		byBoard[entry.BoardID] = entry
+	}
+	return &Tracker{
+		settings:        settings[0],
+		settingsByBoard: byBoard,
+		runner:          defaultRunner,
+	}
 }
 
 func (t *Tracker) FetchCandidateItems() ([]model.Item, error) {
-	return t.fetchBoardItems([]string{"card", "list", "--board", t.settings.BoardID, "--all"})
+	var all []model.Item
+	for _, settings := range t.uniqueBoards() {
+		items, err := t.fetchBoardItems(settings, []string{"card", "list", "--board", settings.BoardID, "--all"})
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, items...)
+	}
+	return dedupe(all), nil
 }
 
 func (t *Tracker) FetchItemsByStates(states []string) ([]model.Item, error) {
@@ -45,26 +78,28 @@ func (t *Tracker) FetchItemsByStates(states []string) ([]model.Item, error) {
 	if len(requested) == 0 {
 		return nil, nil
 	}
-	if includesOpenStates(requested) {
-		items, err := t.fetchBoardItems([]string{"card", "list", "--board", t.settings.BoardID, "--all"})
-		if err != nil {
-			return nil, err
+	for _, settings := range t.uniqueBoards() {
+		if includesOpenStates(requested) {
+			items, err := t.fetchBoardItems(settings, []string{"card", "list", "--board", settings.BoardID, "--all"})
+			if err != nil {
+				return nil, err
+			}
+			all = append(all, filterByStates(items, requested)...)
 		}
-		all = append(all, filterByStates(items, requested)...)
-	}
-	if _, ok := requested["done"]; ok {
-		items, err := t.fetchBoardItems([]string{"card", "list", "--board", t.settings.BoardID, "--indexed-by", "closed", "--all"})
-		if err != nil {
-			return nil, err
+		if _, ok := requested["done"]; ok {
+			items, err := t.fetchBoardItems(settings, []string{"card", "list", "--board", settings.BoardID, "--indexed-by", "closed", "--all"})
+			if err != nil {
+				return nil, err
+			}
+			all = append(all, filterByStates(items, requested)...)
 		}
-		all = append(all, filterByStates(items, requested)...)
-	}
-	if _, ok := requested["not-now"]; ok {
-		items, err := t.fetchBoardItems([]string{"card", "list", "--board", t.settings.BoardID, "--indexed-by", "not_now", "--all"})
-		if err != nil {
-			return nil, err
+		if _, ok := requested["not-now"]; ok {
+			items, err := t.fetchBoardItems(settings, []string{"card", "list", "--board", settings.BoardID, "--indexed-by", "not_now", "--all"})
+			if err != nil {
+				return nil, err
+			}
+			all = append(all, filterByStates(items, requested)...)
 		}
-		all = append(all, filterByStates(items, requested)...)
 	}
 	return dedupe(all), nil
 }
@@ -76,7 +111,11 @@ func (t *Tracker) FetchItemStatesByIDs(ids []string) ([]model.Item, error) {
 		if err != nil {
 			return nil, err
 		}
-		payload, err := t.run([]string{"card", "show", strconv.Itoa(cardNumber)})
+		settings, err := t.settingsForBoard(boardID)
+		if err != nil {
+			return nil, err
+		}
+		payload, err := t.run(settings, []string{"card", "show", strconv.Itoa(cardNumber)})
 		if err != nil {
 			return nil, err
 		}
@@ -98,7 +137,11 @@ func (t *Tracker) CreateComment(id, body string) error {
 	if err != nil {
 		return err
 	}
-	_, err = t.run([]string{"comment", "create", "--card", strconv.Itoa(cardNumber), "--body", body})
+	settings, err := t.settingsForBoardFromID(id)
+	if err != nil {
+		return err
+	}
+	_, err = t.run(settings, []string{"comment", "create", "--card", strconv.Itoa(cardNumber), "--body", body})
 	return err
 }
 
@@ -107,23 +150,27 @@ func (t *Tracker) UpdateItemState(id, state string) error {
 	if err != nil {
 		return err
 	}
+	settings, err := t.settingsForBoard(boardID)
+	if err != nil {
+		return err
+	}
 	state = normalizeState(state)
 	switch state {
 	case "done":
-		_, err = t.run([]string{"card", "close", strconv.Itoa(cardNumber)})
+		_, err = t.run(settings, []string{"card", "close", strconv.Itoa(cardNumber)})
 		return err
 	case "not-now":
-		_, err = t.run([]string{"card", "postpone", strconv.Itoa(cardNumber)})
+		_, err = t.run(settings, []string{"card", "postpone", strconv.Itoa(cardNumber)})
 		return err
 	case "maybe":
-		_, err = t.run([]string{"card", "untriage", strconv.Itoa(cardNumber)})
+		_, err = t.run(settings, []string{"card", "untriage", strconv.Itoa(cardNumber)})
 		return err
 	default:
 		columnID, err := t.resolveColumnID(boardID, state)
 		if err != nil {
 			return err
 		}
-		_, err = t.run([]string{"card", "column", strconv.Itoa(cardNumber), "--column", columnID})
+		_, err = t.run(settings, []string{"card", "column", strconv.Itoa(cardNumber), "--column", columnID})
 		return err
 	}
 }
@@ -134,8 +181,8 @@ type envelope struct {
 	Data    any  `json:"data"`
 }
 
-func (t *Tracker) fetchBoardItems(args []string) ([]model.Item, error) {
-	payload, err := t.run(args)
+func (t *Tracker) fetchBoardItems(settings config.TrackerSettings, args []string) ([]model.Item, error) {
+	payload, err := t.run(settings, args)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +206,11 @@ func (t *Tracker) fetchBoardItems(args []string) ([]model.Item, error) {
 }
 
 func (t *Tracker) resolveColumnID(boardID, target string) (string, error) {
-	payload, err := t.run([]string{"column", "list", "--board", boardID})
+	settings, err := t.settingsForBoard(boardID)
+	if err != nil {
+		return "", err
+	}
+	payload, err := t.run(settings, []string{"column", "list", "--board", boardID})
 	if err != nil {
 		return "", err
 	}
@@ -181,13 +232,13 @@ func (t *Tracker) resolveColumnID(boardID, target string) (string, error) {
 	return "", fmt.Errorf("fizzy column not found for state %q", target)
 }
 
-func (t *Tracker) run(args []string) (envelope, error) {
+func (t *Tracker) run(settings config.TrackerSettings, args []string) (envelope, error) {
 	env := []string{
-		"FIZZY_TOKEN=" + t.settings.APIKey,
-		"FIZZY_API_URL=" + t.settings.APIURL,
+		"FIZZY_TOKEN=" + settings.APIKey,
+		"FIZZY_API_URL=" + settings.APIURL,
 	}
-	if t.settings.Profile != "" {
-		env = append(env, "FIZZY_PROFILE="+t.settings.Profile)
+	if settings.Profile != "" {
+		env = append(env, "FIZZY_PROFILE="+settings.Profile)
 	}
 	out, err := t.runner(args, env)
 	if err != nil {
@@ -201,7 +252,42 @@ func (t *Tracker) run(args []string) (envelope, error) {
 }
 
 func (t *Tracker) RunRaw(args []string) (any, error) {
-	return t.run(args)
+	return t.run(t.settings, args)
+}
+
+func (t *Tracker) uniqueBoards() []config.TrackerSettings {
+	if len(t.settingsByBoard) == 0 {
+		if strings.TrimSpace(t.settings.BoardID) == "" {
+			return nil
+		}
+		return []config.TrackerSettings{t.settings}
+	}
+	out := make([]config.TrackerSettings, 0, len(t.settingsByBoard))
+	for _, settings := range t.settingsByBoard {
+		if strings.TrimSpace(settings.BoardID) == "" {
+			continue
+		}
+		out = append(out, settings)
+	}
+	return out
+}
+
+func (t *Tracker) settingsForBoardFromID(id string) (config.TrackerSettings, error) {
+	boardID, _, err := parseIssueID(id)
+	if err != nil {
+		return config.TrackerSettings{}, err
+	}
+	return t.settingsForBoard(boardID)
+}
+
+func (t *Tracker) settingsForBoard(boardID string) (config.TrackerSettings, error) {
+	if settings, ok := t.settingsByBoard[boardID]; ok {
+		return settings, nil
+	}
+	if boardID == t.settings.BoardID {
+		return t.settings, nil
+	}
+	return config.TrackerSettings{}, fmt.Errorf("fizzy settings not found for board %q", boardID)
 }
 
 func defaultRunner(args []string, env []string) ([]byte, error) {

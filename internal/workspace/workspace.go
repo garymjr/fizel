@@ -71,7 +71,7 @@ func (m *Manager) runHook(script, path, workerHost string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(m.settings.Hooks.TimeoutMS)*time.Millisecond)
 	defer cancel()
 	if strings.TrimSpace(workerHost) != "" {
-		_, code, err := ssh.Run(workerHost, fmt.Sprintf("cd %q && %s", path, script))
+		_, code, err := ssh.Run(workerHost, fmt.Sprintf("%s cd %q && %s", remoteHookExports(m.settings), path, script))
 		if err != nil && code != 0 {
 			return fmt.Errorf("remote hook failed: %w", err)
 		}
@@ -79,6 +79,7 @@ func (m *Manager) runHook(script, path, workerHost string) error {
 	}
 	cmd := exec.CommandContext(ctx, "bash", "-lc", script)
 	cmd.Dir = path
+	cmd.Env = append(os.Environ(), hookEnv(m.settings)...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("hook failed: %w: %s", err, strings.TrimSpace(string(output)))
@@ -91,4 +92,35 @@ func safeIdentifier(id string) string {
 		return "item"
 	}
 	return unsafePath.ReplaceAllString(id, "_")
+}
+
+func hookEnv(settings config.Settings) []string {
+	if strings.TrimSpace(settings.Repo.Path) == "" {
+		return nil
+	}
+	return []string{
+		"SOURCE_REPO_URL=" + settings.Repo.Path,
+		"SOURCE_REPO_PATH=" + settings.Repo.Path,
+		"SOURCE_REPO_KEY=" + settings.Repo.Key,
+		"SOURCE_WORKFLOW_PATH=" + settings.Repo.WorkflowPath,
+	}
+}
+
+func remoteHookExports(settings config.Settings) string {
+	env := hookEnv(settings)
+	if len(env) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(env))
+	for _, entry := range env {
+		pair := strings.SplitN(entry, "=", 2)
+		if len(pair) != 2 {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("export %s=%q;", pair[0], pair[1]))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, " ") + " "
 }

@@ -30,6 +30,7 @@ func TestTransitionCompletedItemMovesCardToPostRunState(t *testing.T) {
 			Agent: config.AgentSettings{MaxConcurrentAgents: 1},
 		},
 		workflow.Loaded{},
+		nil,
 		tracker,
 		observability.NewTerminalForWriter(config.Settings{
 			Agent: config.AgentSettings{MaxConcurrentAgents: 1},
@@ -37,7 +38,12 @@ func TestTransitionCompletedItemMovesCardToPostRunState(t *testing.T) {
 		nil,
 	)
 
-	if err := service.transitionCompletedItem(item); err != nil {
+	if err := service.transitionCompletedItem(item, config.Settings{
+		Tracker: config.TrackerSettings{
+			Kind:         "memory",
+			PostRunState: "Human Review",
+		},
+	}); err != nil {
 		t.Fatalf("transitionCompletedItem() error = %v", err)
 	}
 
@@ -72,6 +78,7 @@ func TestTransitionCompletedItemSkipsWhenPostRunStateBlank(t *testing.T) {
 			Agent: config.AgentSettings{MaxConcurrentAgents: 1},
 		},
 		workflow.Loaded{},
+		nil,
 		tracker,
 		observability.NewTerminalForWriter(config.Settings{
 			Agent: config.AgentSettings{MaxConcurrentAgents: 1},
@@ -79,7 +86,12 @@ func TestTransitionCompletedItemSkipsWhenPostRunStateBlank(t *testing.T) {
 		nil,
 	)
 
-	if err := service.transitionCompletedItem(item); err != nil {
+	if err := service.transitionCompletedItem(item, config.Settings{
+		Tracker: config.TrackerSettings{
+			Kind:         "memory",
+			PostRunState: "",
+		},
+	}); err != nil {
 		t.Fatalf("transitionCompletedItem() error = %v", err)
 	}
 
@@ -89,5 +101,101 @@ func TestTransitionCompletedItemSkipsWhenPostRunStateBlank(t *testing.T) {
 	}
 	if items[0].State != "In Progress" {
 		t.Fatalf("expected unchanged state, got %q", items[0].State)
+	}
+}
+
+func TestRepoForItemResolvesFromLabel(t *testing.T) {
+	service := New(
+		config.Settings{},
+		workflow.Loaded{},
+		map[string]config.ResolvedRepo{
+			"api": {
+				Key: "api",
+				Settings: config.Settings{
+					Repo: config.RepoSettings{Key: "api"},
+				},
+			},
+		},
+		memory.New(),
+		observability.NewTerminalForWriter(config.Settings{
+			Agent: config.AgentSettings{MaxConcurrentAgents: 1},
+		}, &bytes.Buffer{}),
+		nil,
+	)
+
+	repo, err := service.repoForItem(model.Item{
+		ID:         "board-1:42",
+		Identifier: "board-1:42",
+		Labels:     []string{"repo:api"},
+	})
+	if err != nil {
+		t.Fatalf("repoForItem() error = %v", err)
+	}
+	if repo.Key != "api" {
+		t.Fatalf("expected api repo, got %q", repo.Key)
+	}
+}
+
+func TestRepoForItemRejectsMissingLabel(t *testing.T) {
+	service := New(
+		config.Settings{},
+		workflow.Loaded{},
+		map[string]config.ResolvedRepo{
+			"api": {Key: "api"},
+		},
+		memory.New(),
+		observability.NewTerminalForWriter(config.Settings{
+			Agent: config.AgentSettings{MaxConcurrentAgents: 1},
+		}, &bytes.Buffer{}),
+		nil,
+	)
+
+	if _, err := service.repoForItem(model.Item{ID: "board-1:42", Identifier: "board-1:42"}); err == nil {
+		t.Fatalf("expected missing repo label error")
+	}
+}
+
+func TestRepoForItemRejectsMultipleLabels(t *testing.T) {
+	service := New(
+		config.Settings{},
+		workflow.Loaded{},
+		map[string]config.ResolvedRepo{
+			"api": {Key: "api"},
+			"web": {Key: "web"},
+		},
+		memory.New(),
+		observability.NewTerminalForWriter(config.Settings{
+			Agent: config.AgentSettings{MaxConcurrentAgents: 1},
+		}, &bytes.Buffer{}),
+		nil,
+	)
+
+	if _, err := service.repoForItem(model.Item{
+		ID:         "board-1:42",
+		Identifier: "board-1:42",
+		Labels:     []string{"repo:api", "repo:web"},
+	}); err == nil {
+		t.Fatalf("expected multiple repo label error")
+	}
+}
+
+func TestPromptForUsesRepoWorkflowPrompt(t *testing.T) {
+	service := New(
+		config.Settings{},
+		workflow.Loaded{},
+		nil,
+		memory.New(),
+		observability.NewTerminalForWriter(config.Settings{
+			Agent: config.AgentSettings{MaxConcurrentAgents: 1},
+		}, &bytes.Buffer{}),
+		nil,
+	)
+
+	got := service.promptFor(model.Item{
+		Identifier: "board-1:42",
+		Title:      "Fix bug",
+	}, workflow.Loaded{PromptTemplate: "Repo prompt for {{ issue.identifier }}: {{ issue.title }}"})
+	if got != "Repo prompt for board-1:42: Fix bug" {
+		t.Fatalf("unexpected prompt %q", got)
 	}
 }

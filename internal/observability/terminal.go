@@ -13,14 +13,21 @@ import (
 )
 
 type Snapshot struct {
-	Polling       bool
-	Running       []RunningItem
-	Retrying      []RetryItem
-	TrackerHeader string
+	Polling      bool
+	Running      []RunningItem
+	Retrying     []RetryItem
+	TrackerMode  string
+	WatchedRepos []WatchedRepoStatus
+}
+
+type WatchedRepoStatus struct {
+	Key     string
+	BoardID string
 }
 
 type RunningItem struct {
 	Identifier string
+	RepoKey    string
 	State      string
 	StartedAt  time.Time
 	LastEvent  string
@@ -28,6 +35,7 @@ type RunningItem struct {
 
 type RetryItem struct {
 	Identifier string
+	RepoKey    string
 	Attempt    int
 	RetryAt    time.Time
 }
@@ -75,7 +83,8 @@ func (t *Terminal) format(snapshot Snapshot, now time.Time) []string {
 			colorize(fmt.Sprintf("%d", len(snapshot.Running)), ansiGreen) +
 			colorize("/", ansiGray) +
 			colorize(fmt.Sprintf("%d", t.settings.Agent.MaxConcurrentAgents), ansiGray),
-		colorize("│ Tracker: ", ansiBold) + colorize(snapshot.TrackerHeader, ansiCyan),
+		colorize("│ Tracker: ", ansiBold) + colorize(snapshot.TrackerMode, ansiCyan),
+		colorize("│ Repos: ", ansiBold) + colorize(t.repoSummary(snapshot.WatchedRepos), ansiCyan),
 		colorize("│ Next refresh: ", ansiBold) + colorize(t.nextRefreshLabel(snapshot.Polling), refreshColor(snapshot.Polling)),
 		colorize("├─ Running", ansiBold),
 		"│",
@@ -97,8 +106,8 @@ func (t *Terminal) nextRefreshLabel(polling bool) string {
 
 func (t *Terminal) runningLines(running []RunningItem, now time.Time) []string {
 	lines := []string{
-		colorize(fmt.Sprintf("│ %-24s %-16s %-8s %s", "ID", "STATE", "AGE", "EVENT"), ansiGray),
-		colorize(fmt.Sprintf("│ %-24s %-16s %-8s %s", strings.Repeat("─", 24), strings.Repeat("─", 16), strings.Repeat("─", 8), strings.Repeat("─", 24)), ansiGray),
+		colorize(fmt.Sprintf("│ %-10s %-24s %-16s %-8s %s", "REPO", "ID", "STATE", "AGE", "EVENT"), ansiGray),
+		colorize(fmt.Sprintf("│ %-10s %-24s %-16s %-8s %s", strings.Repeat("─", 10), strings.Repeat("─", 24), strings.Repeat("─", 16), strings.Repeat("─", 8), strings.Repeat("─", 24)), ansiGray),
 	}
 	if len(running) == 0 {
 		return append(lines, colorize("│ No active agents", ansiGray))
@@ -109,8 +118,9 @@ func (t *Terminal) runningLines(running []RunningItem, now time.Time) []string {
 			event = "-"
 		}
 		lines = append(lines, fmt.Sprintf(
-			"%s %s %s %s %s",
+			"%s %s %s %s %s %s",
 			colorize("│", ansiGray),
+			padColored(colorize(truncate(repoLabel(item.RepoKey), 10), ansiGreen), 10),
 			padColored(colorize(truncate(item.Identifier, 24), ansiCyan), 24),
 			padColored(colorize(truncate(item.State, 16), ansiMagenta), 16),
 			padColored(colorize(formatAge(now.Sub(item.StartedAt)), ansiYellow), 8),
@@ -122,22 +132,41 @@ func (t *Terminal) runningLines(running []RunningItem, now time.Time) []string {
 
 func (t *Terminal) retryLines(retrying []RetryItem, now time.Time) []string {
 	lines := []string{
-		colorize(fmt.Sprintf("│ %-24s %-8s %s", "ID", "ATTEMPT", "RETRY IN"), ansiGray),
-		colorize(fmt.Sprintf("│ %-24s %-8s %s", strings.Repeat("─", 24), strings.Repeat("─", 8), strings.Repeat("─", 16)), ansiGray),
+		colorize(fmt.Sprintf("│ %-10s %-24s %-8s %s", "REPO", "ID", "ATTEMPT", "RETRY IN"), ansiGray),
+		colorize(fmt.Sprintf("│ %-10s %-24s %-8s %s", strings.Repeat("─", 10), strings.Repeat("─", 24), strings.Repeat("─", 8), strings.Repeat("─", 16)), ansiGray),
 	}
 	if len(retrying) == 0 {
 		return append(lines, colorize("│ No queued retries", ansiGray))
 	}
 	for _, item := range retrying {
 		lines = append(lines, fmt.Sprintf(
-			"%s %s %s %s",
+			"%s %s %s %s %s",
 			colorize("│", ansiGray),
+			padColored(colorize(truncate(repoLabel(item.RepoKey), 10), ansiGreen), 10),
 			padColored(colorize(truncate(item.Identifier, 24), ansiCyan), 24),
 			padColored(colorize(fmt.Sprintf("%d", item.Attempt), ansiYellow), 8),
 			colorize(formatAge(item.RetryAt.Sub(now)), ansiMagenta),
 		))
 	}
 	return lines
+}
+
+func (t *Terminal) repoSummary(repos []WatchedRepoStatus) string {
+	if len(repos) == 0 {
+		if t.settings.Repo.Key != "" {
+			return fmt.Sprintf("1 watched (%s)", t.settings.Repo.Key)
+		}
+		return "single workflow"
+	}
+	parts := make([]string, 0, len(repos))
+	for _, repo := range repos {
+		label := repo.Key
+		if strings.TrimSpace(repo.BoardID) != "" {
+			label += " -> " + repo.BoardID
+		}
+		parts = append(parts, label)
+	}
+	return fmt.Sprintf("%d watched (%s)", len(repos), strings.Join(parts, ", "))
 }
 
 func colorize(v, color string) string {
@@ -188,4 +217,12 @@ func truncate(v string, width int) string {
 		return v[:width]
 	}
 	return v[:width-1] + "…"
+}
+
+func repoLabel(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return "-"
+	}
+	return v
 }

@@ -79,3 +79,31 @@ func TestFetchCandidateItemsAcceptsSuccessEnvelope(t *testing.T) {
 		t.Fatalf("unexpected item ID %q", items[0].ID)
 	}
 }
+
+func TestFetchCandidateItemsListsAcrossBoards(t *testing.T) {
+	runner := func(args []string, env []string) ([]byte, error) {
+		boardID := args[3]
+		payload := map[string]any{
+			"ok": true,
+			"data": []map[string]any{{
+				"number": 1,
+				"title":  "Task for " + boardID,
+				"board":  map[string]any{"id": boardID, "name": boardID},
+			}},
+		}
+		return json.Marshal(payload)
+	}
+	tracker := NewFromMany([]config.TrackerSettings{
+		{Kind: "fizzy", APIKey: "token", APIURL: "https://app.fizzy.do", BoardID: "board-1"},
+		{Kind: "fizzy", APIKey: "token", APIURL: "https://app.fizzy.do", BoardID: "board-2"},
+	})
+	tracker.runner = runner
+
+	items, err := tracker.FetchCandidateItems()
+	if err != nil {
+		t.Fatalf("FetchCandidateItems() error = %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(items))
+	}
+}
