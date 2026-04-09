@@ -62,6 +62,10 @@ func New(settings config.Settings, loaded workflow.Loaded, repos map[string]conf
 	}
 }
 
+func (s *Service) Terminal() *observability.Terminal {
+	return s.term
+}
+
 func (s *Service) Run(ctx context.Context) error {
 	ticker := time.NewTicker(time.Duration(s.settings.Polling.IntervalMS) * time.Millisecond)
 	defer ticker.Stop()

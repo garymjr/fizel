@@ -15,6 +15,7 @@ type dashboardModel struct {
 	settings       config.Settings
 	snapshot       Snapshot
 	now            func() time.Time
+	onQuit         func()
 	currentTime    time.Time
 	renderInterval time.Duration
 	width          int
@@ -22,7 +23,7 @@ type dashboardModel struct {
 	styles         dashboardStyles
 }
 
-func newDashboardModel(settings config.Settings, snapshot Snapshot, now func() time.Time, renderInterval time.Duration) dashboardModel {
+func newDashboardModel(settings config.Settings, snapshot Snapshot, now func() time.Time, renderInterval time.Duration, onQuit func()) dashboardModel {
 	if now == nil {
 		now = time.Now
 	}
@@ -30,6 +31,7 @@ func newDashboardModel(settings config.Settings, snapshot Snapshot, now func() t
 		settings:       settings,
 		snapshot:       snapshot,
 		now:            now,
+		onQuit:         onQuit,
 		currentTime:    now(),
 		renderInterval: renderInterval,
 		width:          110,
@@ -57,6 +59,9 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
+			if m.onQuit != nil {
+				m.onQuit()
+			}
 			return m, tea.Quit
 		}
 	}

@@ -45,7 +45,9 @@ type RetryItem struct {
 type Terminal struct {
 	settings       config.Settings
 	out            io.Writer
+	in             io.Reader
 	now            func() time.Time
+	onQuit         func()
 	renderWidth    int
 	renderInterval time.Duration
 	interactive    bool
@@ -72,6 +74,7 @@ func NewTerminalForWriter(settings config.Settings, out io.Writer) *Terminal {
 	return &Terminal{
 		settings:       settings,
 		out:            out,
+		in:             os.Stdin,
 		now:            time.Now,
 		renderWidth:    110,
 		renderInterval: interval,
@@ -99,11 +102,11 @@ func (t *Terminal) ensureProgramLocked() {
 	if t.started {
 		return
 	}
-	model := newDashboardModel(t.settings, t.lastSnapshot, t.now, t.renderInterval)
+	model := newDashboardModel(t.settings, t.lastSnapshot, t.now, t.renderInterval, t.onQuit)
 	t.program = tea.NewProgram(
 		model,
 		tea.WithOutput(t.out),
-		tea.WithInput(nil),
+		tea.WithInput(t.in),
 		tea.WithAltScreen(),
 	)
 	t.started = true
@@ -112,8 +115,32 @@ func (t *Terminal) ensureProgramLocked() {
 	}(t.program)
 }
 
+func (t *Terminal) SetOnQuit(fn func()) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.onQuit = fn
+}
+
+func (t *Terminal) Close() {
+	t.mu.Lock()
+	program := t.program
+	started := t.started
+	interactive := t.interactive
+	out := t.out
+	t.mu.Unlock()
+
+	if !started || program == nil {
+		return
+	}
+	program.Quit()
+	program.Wait()
+	if interactive {
+		fmt.Fprint(out, "\r")
+	}
+}
+
 func (t *Terminal) format(snapshot Snapshot, now time.Time, width int) string {
-	model := newDashboardModel(t.settings, snapshot, func() time.Time { return now }, t.renderInterval)
+	model := newDashboardModel(t.settings, snapshot, func() time.Time { return now }, t.renderInterval, nil)
 	model.width = width
 	return model.View()
 }

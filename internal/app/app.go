@@ -59,6 +59,12 @@ func New(opts Options) (*App, error) {
 }
 
 func (a *App) Run(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	if a.orchestrator != nil && a.orchestrator.Terminal() != nil {
+		defer a.orchestrator.Terminal().Close()
+		a.orchestrator.Terminal().SetOnQuit(cancel)
+	}
 	return a.orchestrator.Run(ctx)
 }
 

@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -149,7 +150,7 @@ func TestDashboardModelHandlesResizeAndSnapshotUpdate(t *testing.T) {
 		Agent:   config.AgentSettings{MaxConcurrentAgents: 4},
 	}, Snapshot{
 		TrackerMode: "memory",
-	}, func() time.Time { return now }, 100*time.Millisecond)
+	}, func() time.Time { return now }, 100*time.Millisecond, nil)
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 132, Height: 40})
 	resized := updated.(dashboardModel)
@@ -179,7 +180,7 @@ func TestDashboardModelHandlesResizeAndSnapshotUpdate(t *testing.T) {
 }
 
 func TestDashboardModelTickCmdKeepsRefreshing(t *testing.T) {
-	model := newDashboardModel(config.Settings{}, Snapshot{}, time.Now, 50*time.Millisecond)
+	model := newDashboardModel(config.Settings{}, Snapshot{}, time.Now, 50*time.Millisecond, nil)
 	cmd := model.Init()
 	if cmd == nil {
 		t.Fatalf("expected init command")
@@ -191,6 +192,37 @@ func TestDashboardModelTickCmdKeepsRefreshing(t *testing.T) {
 	}
 	if _, ok := updated.(dashboardModel); !ok {
 		t.Fatalf("expected dashboardModel after tick update")
+	}
+}
+
+func TestDashboardModelQuitKeyInvokesOnQuit(t *testing.T) {
+	called := false
+	model := newDashboardModel(config.Settings{}, Snapshot{}, time.Now, 50*time.Millisecond, func() {
+		called = true
+	})
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	if !called {
+		t.Fatalf("expected quit callback to run")
+	}
+	if cmd == nil {
+		t.Fatalf("expected quit command")
+	}
+	if _, ok := updated.(dashboardModel); !ok {
+		t.Fatalf("expected dashboardModel after quit update")
+	}
+}
+
+func TestNewTerminalForWriterUsesStdinForInteractiveDashboard(t *testing.T) {
+	term := NewTerminalForWriter(config.Settings{
+		Observability: config.ObservabilitySettings{DashboardEnabled: true},
+	}, os.Stdout)
+
+	if !term.interactive {
+		t.Fatalf("expected stdout dashboard to be interactive")
+	}
+	if term.in != os.Stdin {
+		t.Fatalf("expected stdin to be wired for interactive dashboard")
 	}
 }
 
