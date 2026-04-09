@@ -25,9 +25,12 @@ func New(settings config.Settings) *Manager {
 	return &Manager{settings: settings}
 }
 
+func (m *Manager) PathForItem(item model.Item) string {
+	return filepath.Join(m.settings.Workspace.Root, safeIdentifier(item.Identifier))
+}
+
 func (m *Manager) CreateForItem(item model.Item, workerHost string) (string, error) {
-	safe := safeIdentifier(item.Identifier)
-	path := filepath.Join(m.settings.Workspace.Root, safe)
+	path := m.PathForItem(item)
 	if strings.TrimSpace(workerHost) != "" {
 		_, code, err := ssh.Run(workerHost, fmt.Sprintf("mkdir -p %q", path))
 		if err != nil && code != 0 {

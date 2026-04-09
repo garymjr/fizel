@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -86,6 +87,7 @@ func (s *Service) Run(ctx context.Context) error {
 
 func (s *Service) dispatch(ctx context.Context) error {
 	s.render(true)
+	s.cleanupMergedWorkspaces()
 	s.dispatchDueRetries(ctx)
 	items, err := s.tracker.FetchCandidateItems()
 	if err != nil {
@@ -110,6 +112,38 @@ func (s *Service) dispatch(ctx context.Context) error {
 	}
 	s.render(false)
 	return nil
+}
+
+func (s *Service) cleanupMergedWorkspaces() {
+	items, err := s.tracker.FetchItemsByStates([]string{"Done"})
+	if err != nil {
+		s.logger.Error("merged workspace cleanup failed", "error", err)
+		return
+	}
+	for _, item := range items {
+		if s.isBusy(item.ID) {
+			continue
+		}
+		repo, err := s.repoForItem(item)
+		if err != nil {
+			s.logger.Error("merged workspace repo resolution failed", "item", item.Identifier, "error", err)
+			continue
+		}
+		manager := workspace.New(repo.Settings)
+		path := manager.PathForItem(item)
+		if _, err := os.Stat(path); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			s.logger.Error("merged workspace stat failed", "item", item.Identifier, "repo", repo.Key, "workspace", path, "error", err)
+			continue
+		}
+		if err := manager.Remove(path, ""); err != nil {
+			s.logger.Error("merged workspace remove failed", "item", item.Identifier, "repo", repo.Key, "workspace", path, "error", err)
+			continue
+		}
+		s.logger.Info("merged workspace removed", "item", item.Identifier, "repo", repo.Key, "workspace", path)
+	}
 }
 
 func (s *Service) startItem(ctx context.Context, item model.Item, repo config.ResolvedRepo) {

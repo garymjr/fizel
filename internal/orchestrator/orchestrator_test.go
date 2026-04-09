@@ -2,6 +2,8 @@ package orchestrator
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/gmurray/fizel/internal/config"
@@ -101,6 +103,92 @@ func TestTransitionCompletedItemSkipsWhenPostRunStateBlank(t *testing.T) {
 	}
 	if items[0].State != "In Progress" {
 		t.Fatalf("expected unchanged state, got %q", items[0].State)
+	}
+}
+
+func TestCleanupMergedWorkspacesRemovesDoneWorkspace(t *testing.T) {
+	root := t.TempDir()
+	tracker := memory.New()
+	item := model.Item{
+		ID:         "board-1:42",
+		Identifier: "board-1:42",
+		State:      "Done",
+		Labels:     []string{"repo:api"},
+	}
+	tracker.Seed(item)
+
+	repo := config.ResolvedRepo{
+		Key: "api",
+		Settings: config.Settings{
+			Workspace: config.WorkspaceSettings{Root: root},
+			Repo:      config.RepoSettings{Key: "api"},
+			Agent:     config.AgentSettings{MaxConcurrentAgents: 1},
+			Hooks:     config.HookSettings{TimeoutMS: 1000},
+		},
+	}
+	path := filepath.Join(root, "board-1_42")
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+
+	service := New(
+		config.Settings{Agent: config.AgentSettings{MaxConcurrentAgents: 1}},
+		workflow.Loaded{},
+		map[string]config.ResolvedRepo{"api": repo},
+		tracker,
+		observability.NewTerminalForWriter(config.Settings{
+			Agent: config.AgentSettings{MaxConcurrentAgents: 1},
+		}, &bytes.Buffer{}),
+		nil,
+	)
+
+	service.cleanupMergedWorkspaces()
+
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("expected workspace removal, stat err = %v", err)
+	}
+}
+
+func TestCleanupMergedWorkspacesSkipsNonDoneWorkspace(t *testing.T) {
+	root := t.TempDir()
+	tracker := memory.New()
+	item := model.Item{
+		ID:         "board-1:42",
+		Identifier: "board-1:42",
+		State:      "Human Review",
+		Labels:     []string{"repo:api"},
+	}
+	tracker.Seed(item)
+
+	repo := config.ResolvedRepo{
+		Key: "api",
+		Settings: config.Settings{
+			Workspace: config.WorkspaceSettings{Root: root},
+			Repo:      config.RepoSettings{Key: "api"},
+			Agent:     config.AgentSettings{MaxConcurrentAgents: 1},
+			Hooks:     config.HookSettings{TimeoutMS: 1000},
+		},
+	}
+	path := filepath.Join(root, "board-1_42")
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+
+	service := New(
+		config.Settings{Agent: config.AgentSettings{MaxConcurrentAgents: 1}},
+		workflow.Loaded{},
+		map[string]config.ResolvedRepo{"api": repo},
+		tracker,
+		observability.NewTerminalForWriter(config.Settings{
+			Agent: config.AgentSettings{MaxConcurrentAgents: 1},
+		}, &bytes.Buffer{}),
+		nil,
+	)
+
+	service.cleanupMergedWorkspaces()
+
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected workspace to remain, stat err = %v", err)
 	}
 }
 
