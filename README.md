@@ -26,9 +26,6 @@ tracker_defaults:
 settings:
   workspace:
     root: ~/code/fizel-workspaces
-  hooks:
-    after_create: |
-      git clone --depth 1 "$SOURCE_REPO_URL" .
 watched_repos:
   - key: api
     path: ~/code/api
@@ -36,6 +33,6 @@ watched_repos:
     path: ~/code/web
 ```
 
-Each watched repo must have a root `WORKFLOW.md`. In watched-repo mode, only `tracker:` front matter is read from that workflow file and applied on top of `tracker_defaults`; everything in `settings` is global source of truth. Fizzy cards must include exactly one repo label in the form `repo:<key>`.
+Each watched repo must have a root `WORKFLOW.md`. In watched-repo mode, `tracker:` and `hooks:` front matter are read from that workflow file. `tracker:` applies on top of `tracker_defaults`. Hooks are workspace-only and must be defined in each repo `WORKFLOW.md`; `config.settings.hooks` is not supported. Other runtime settings still come from global `settings`. Fizzy cards must include exactly one repo label in the form `repo:<key>`.
 
 One-off single workflow runs still work with `fizel -workflow /path/to/WORKFLOW.md`.

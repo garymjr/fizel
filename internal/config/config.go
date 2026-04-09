@@ -145,9 +145,9 @@ func Merge(base Settings, loaded workflow.Loaded) (Settings, error) {
 	return s, nil
 }
 
-func MergeTrackerOnly(base Settings, loaded workflow.Loaded) (Settings, error) {
+func MergeRepoWorkflow(base Settings, loaded workflow.Loaded) (Settings, error) {
 	s := cloneSettings(base)
-	if err := decodeMapIntoSettings(trackerOnlyConfig(loaded.Config), &s); err != nil {
+	if err := decodeMapIntoSettings(trackerAndHooksConfig(loaded.Config), &s); err != nil {
 		return Settings{}, err
 	}
 	s.Prompt = loaded.Prompt
@@ -216,15 +216,21 @@ func workflowYAML(raw map[string]any) ([]byte, error) {
 	return yamlMarshal(raw)
 }
 
-func trackerOnlyConfig(raw map[string]any) map[string]any {
+func trackerAndHooksConfig(raw map[string]any) map[string]any {
 	if raw == nil {
 		return nil
 	}
-	tracker, ok := raw["tracker"]
-	if !ok {
+	out := map[string]any{}
+	if tracker, ok := raw["tracker"]; ok {
+		out["tracker"] = tracker
+	}
+	if hooks, ok := raw["hooks"]; ok {
+		out["hooks"] = hooks
+	}
+	if len(out) == 0 {
 		return nil
 	}
-	return map[string]any{"tracker": tracker}
+	return out
 }
 
 func yamlMarshal(v any) ([]byte, error)         { return yaml.Marshal(v) }
@@ -353,6 +359,9 @@ func LoadRegistry(path string) (Registry, error) {
 	if _, ok := raw.Settings["tracker"]; ok {
 		return Registry{}, errors.New("config.settings.tracker is not allowed; use tracker_defaults")
 	}
+	if _, ok := raw.Settings["hooks"]; ok {
+		return Registry{}, errors.New("config.settings.hooks is not allowed; define hooks in each repo WORKFLOW.md")
+	}
 	defaults, err := FromRaw(globalDefaultsConfig(raw.Settings, raw.TrackerDefaults))
 	if err != nil {
 		return Registry{}, fmt.Errorf("load defaults: %w", err)
@@ -385,7 +394,7 @@ func LoadRegistry(path string) (Registry, error) {
 		if err != nil {
 			return Registry{}, fmt.Errorf("load workflow for repo %q: %w", key, err)
 		}
-		settings, err := MergeTrackerOnly(defaults, loaded)
+		settings, err := MergeRepoWorkflow(defaults, loaded)
 		if err != nil {
 			return Registry{}, fmt.Errorf("merge workflow for repo %q: %w", key, err)
 		}

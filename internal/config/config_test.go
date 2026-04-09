@@ -100,7 +100,7 @@ func TestFromLoadedStillRequiresFizzyBoardID(t *testing.T) {
 	}
 }
 
-func TestLoadRegistryMergesDefaultsAndWorkflow(t *testing.T) {
+func TestLoadRegistryMergesDefaultsAndRepoWorkflow(t *testing.T) {
 	root := t.TempDir()
 	repoPath := filepath.Join(root, "api")
 	if err := os.MkdirAll(repoPath, 0o755); err != nil {
@@ -130,8 +130,6 @@ settings:
   agent:
     max_concurrent_agents: 2
     max_turns: 3
-  hooks:
-    after_create: echo global
 watched_repos:
   - key: API
     path: `+repoPath+`
@@ -156,14 +154,41 @@ watched_repos:
 	if repo.Settings.Agent.MaxConcurrentAgents != 2 {
 		t.Fatalf("expected default max_concurrent_agents, got %d", repo.Settings.Agent.MaxConcurrentAgents)
 	}
-	if repo.Settings.Hooks.AfterCreate != "echo global" {
-		t.Fatalf("expected global hook to win, got %q", repo.Settings.Hooks.AfterCreate)
+	if repo.Settings.Hooks.AfterCreate != "echo repo > repo.txt" {
+		t.Fatalf("expected repo hook from workflow, got %q", repo.Settings.Hooks.AfterCreate)
 	}
 	if repo.Settings.Repo.Path != repoPath {
 		t.Fatalf("expected repo path %q, got %q", repoPath, repo.Settings.Repo.Path)
 	}
 	if repo.Loaded.Prompt != "Prompt for {{ issue.identifier }}" {
 		t.Fatalf("unexpected prompt %q", repo.Loaded.Prompt)
+	}
+}
+
+func TestLoadRegistryRejectsGlobalHooks(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "api")
+	if err := os.MkdirAll(repoPath, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoPath, "WORKFLOW.md"), []byte("---\ntracker:\n  board_id: board-1\n---\n"), 0o644); err != nil {
+		t.Fatalf("write workflow: %v", err)
+	}
+	configPath := filepath.Join(root, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(`tracker_defaults:
+  kind: memory
+settings:
+  hooks:
+    after_create: echo nope
+watched_repos:
+  - key: api
+    path: `+repoPath+`
+`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	if _, err := LoadRegistry(configPath); err == nil {
+		t.Fatalf("expected global hooks error")
 	}
 }
 
