@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gmurray/fizel/internal/workflow"
@@ -112,7 +113,7 @@ tracker:
 agent:
   max_turns: 7
 hooks:
-  after_create: |
+  before_run: |
     echo repo > repo.txt
 ---
 Prompt for {{ issue.identifier }}
@@ -154,8 +155,8 @@ watched_repos:
 	if repo.Settings.Agent.MaxConcurrentAgents != 2 {
 		t.Fatalf("expected default max_concurrent_agents, got %d", repo.Settings.Agent.MaxConcurrentAgents)
 	}
-	if repo.Settings.Hooks.AfterCreate != "echo repo > repo.txt" {
-		t.Fatalf("expected repo hook from workflow, got %q", repo.Settings.Hooks.AfterCreate)
+	if repo.Settings.Hooks.BeforeRun != "echo repo > repo.txt" {
+		t.Fatalf("expected repo hook from workflow, got %q", repo.Settings.Hooks.BeforeRun)
 	}
 	if repo.Settings.Repo.Path != repoPath {
 		t.Fatalf("expected repo path %q, got %q", repoPath, repo.Settings.Repo.Path)
@@ -179,7 +180,7 @@ func TestLoadRegistryRejectsGlobalHooks(t *testing.T) {
   kind: memory
 settings:
   hooks:
-    after_create: echo nope
+    before_run: echo nope
 watched_repos:
   - key: api
     path: `+repoPath+`
@@ -189,6 +190,20 @@ watched_repos:
 
 	if _, err := LoadRegistry(configPath); err == nil {
 		t.Fatalf("expected global hooks error")
+	}
+}
+
+func TestFromRawRejectsAfterCreateHook(t *testing.T) {
+	_, err := FromRaw(map[string]any{
+		"tracker": map[string]any{
+			"kind": "memory",
+		},
+		"hooks": map[string]any{
+			"after_create": "echo nope",
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "hooks.after_create") {
+		t.Fatalf("expected after_create rejection, got %v", err)
 	}
 }
 

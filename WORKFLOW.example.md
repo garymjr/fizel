@@ -14,8 +14,10 @@ polling:
 workspace:
   root: ~/code/fizel-workspaces
 hooks:
-  after_create: |
-    git clone --depth 1 "$SOURCE_REPO_URL" .
+  before_run: |
+    if [ -f package.json ]; then
+      npm install
+    fi
 agent:
   max_concurrent_agents: 4
   max_turns: 5
