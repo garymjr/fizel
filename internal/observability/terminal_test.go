@@ -70,6 +70,7 @@ func TestTerminalFormatWideSnapshotShowsSideBySideTables(t *testing.T) {
 	assertContains(t, rendered, "board-1:42")
 	assertContains(t, rendered, "board-1:9")
 	assertContains(t, rendered, "18s")
+	assertContains(t, rendered, "Recent Logs  0")
 }
 
 func TestTerminalFormatShowsLiveRefreshCountdown(t *testing.T) {
@@ -141,6 +142,51 @@ func TestTerminalFormatTruncatesLongFields(t *testing.T) {
 	assertContains(t, rendered, "board-1:42-with-a-v…")
 	assertContains(t, rendered, "api-servi…")
 	assertContains(t, rendered, "dispatching-agent-with-an-ext…")
+}
+
+func TestTerminalFormatShowsRecentLogsPanel(t *testing.T) {
+	term := NewTerminalForWriter(config.Settings{
+		Polling: config.PollingSettings{IntervalMS: 5_000},
+		Agent:   config.AgentSettings{MaxConcurrentAgents: 4},
+	}, nil)
+	now := time.Unix(1_700_000_000, 0)
+
+	rendered := stripANSI(term.format(Snapshot{
+		Logs: []string{
+			`time=2026-04-09T21:12:52-06:00 level=INFO msg="agent run completed" item=board-1:42 repo=api`,
+			`time=2026-04-09T21:13:10-06:00 level=ERROR msg="agent run failed" item=board-1:43 repo=api error="boom"`,
+		},
+	}, now, 120))
+
+	assertContains(t, rendered, "Recent Logs  2")
+	assertContains(t, rendered, `msg="agent run completed"`)
+	assertContains(t, rendered, `msg="agent run failed"`)
+}
+
+func TestTerminalLogWriterCapturesCompletedLines(t *testing.T) {
+	term := NewTerminalForWriter(config.Settings{}, nil)
+	term.Render(Snapshot{TrackerMode: "memory"})
+
+	if _, err := term.LogWriter().Write([]byte("first line")); err != nil {
+		t.Fatalf("first write: %v", err)
+	}
+	if len(term.lastSnapshot.Logs) != 0 {
+		t.Fatalf("expected buffered partial line, got %v", term.lastSnapshot.Logs)
+	}
+
+	if _, err := term.LogWriter().Write([]byte(" continued\nsecond line\n")); err != nil {
+		t.Fatalf("second write: %v", err)
+	}
+
+	if len(term.lastSnapshot.Logs) != 2 {
+		t.Fatalf("expected 2 logs, got %d", len(term.lastSnapshot.Logs))
+	}
+	if got := term.lastSnapshot.Logs[0]; got != "first line continued" {
+		t.Fatalf("unexpected first log %q", got)
+	}
+	if got := term.lastSnapshot.Logs[1]; got != "second line" {
+		t.Fatalf("unexpected second log %q", got)
+	}
 }
 
 func TestDashboardModelHandlesResizeAndSnapshotUpdate(t *testing.T) {

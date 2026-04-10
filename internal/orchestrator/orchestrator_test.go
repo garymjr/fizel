@@ -2,8 +2,10 @@ package orchestrator
 
 import (
 	"bytes"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gmurray/fizel/internal/config"
@@ -146,6 +148,55 @@ func TestCleanupMergedWorkspacesRemovesDoneWorkspace(t *testing.T) {
 
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("expected workspace removal, stat err = %v", err)
+	}
+}
+
+func TestCleanupMergedWorkspacesLogsDoNotExposeWorkspacePath(t *testing.T) {
+	root := t.TempDir()
+	tracker := memory.New()
+	item := model.Item{
+		ID:         "board-1:42",
+		Identifier: "board-1:42",
+		State:      "Done",
+		Labels:     []string{"repo:api"},
+	}
+	tracker.Seed(item)
+
+	repo := config.ResolvedRepo{
+		Key: "api",
+		Settings: config.Settings{
+			Workspace: config.WorkspaceSettings{Root: root},
+			Repo:      config.RepoSettings{Key: "api"},
+			Agent:     config.AgentSettings{MaxConcurrentAgents: 1},
+			Hooks:     config.HookSettings{TimeoutMS: 1000},
+		},
+	}
+	path := filepath.Join(root, "board-1_42")
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	service := New(
+		config.Settings{Agent: config.AgentSettings{MaxConcurrentAgents: 1}},
+		workflow.Loaded{},
+		map[string]config.ResolvedRepo{"api": repo},
+		tracker,
+		observability.NewTerminalForWriter(config.Settings{
+			Agent: config.AgentSettings{MaxConcurrentAgents: 1},
+		}, &bytes.Buffer{}),
+		logger,
+	)
+
+	service.cleanupMergedWorkspaces()
+
+	output := logs.String()
+	if strings.Contains(output, "workspace=") {
+		t.Fatalf("expected workspace field to be omitted, got %q", output)
+	}
+	if strings.Contains(output, path) {
+		t.Fatalf("expected workspace path to be omitted, got %q", output)
 	}
 }
 

@@ -97,12 +97,14 @@ func (m dashboardModel) renderBody(width int) string {
 		rightWidth := innerWidth - leftWidth - 1
 		left := m.renderRunningPanel(leftWidth)
 		right := m.renderRetryPanel(rightWidth)
-		return lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
+		top := lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
+		return lipgloss.JoinVertical(lipgloss.Left, top, m.renderLogsPanel(innerWidth))
 	}
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		m.renderRunningPanel(innerWidth),
 		m.renderRetryPanel(innerWidth),
+		m.renderLogsPanel(innerWidth),
 	)
 }
 
@@ -196,6 +198,7 @@ func (m dashboardModel) renderFooter(width int) string {
 		"auto-refreshing",
 		fmt.Sprintf("%d running", len(m.snapshot.Running)),
 		fmt.Sprintf("%d queued", len(m.snapshot.Retrying)),
+		fmt.Sprintf("%d logs", len(m.snapshot.Logs)),
 		m.repoSummaryCompact(),
 	}
 	content := strings.Join(parts, "  •  ")
@@ -203,6 +206,38 @@ func (m dashboardModel) renderFooter(width int) string {
 		content += "  •  q quit"
 	}
 	return m.styles.footer.Width(width - m.styles.doc.GetHorizontalPadding()).Render(content)
+}
+
+func (m dashboardModel) renderLogsPanel(width int) string {
+	contentWidth := boxContentWidth(width)
+	rows := []string{
+		m.styles.panelTitle.Render(fmt.Sprintf("Recent Logs  %d", len(m.snapshot.Logs))),
+		"",
+	}
+	if len(m.snapshot.Logs) == 0 {
+		rows = append(rows, m.styles.idle.Render("No logs yet."))
+		return m.styles.panel.Width(contentWidth).Render(strings.Join(rows, "\n"))
+	}
+
+	logs := m.snapshot.Logs
+	visible := m.visibleLogRows()
+	if len(logs) > visible {
+		logs = logs[len(logs)-visible:]
+	}
+	for _, line := range logs {
+		rows = append(rows, m.styles.value.Render(truncateText(line, contentWidth)))
+	}
+	return m.styles.panel.Width(contentWidth).Render(strings.Join(rows, "\n"))
+}
+
+func (m dashboardModel) visibleLogRows() int {
+	if m.height >= 34 {
+		return 8
+	}
+	if m.height >= 24 {
+		return 6
+	}
+	return 4
 }
 
 func (m dashboardModel) nextRefreshLabel() string {

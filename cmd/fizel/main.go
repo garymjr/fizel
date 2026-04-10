@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -56,13 +55,11 @@ func main() {
 		}
 	}
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	application, err := app.New(app.Options{
 		ConfigPath:   configPath,
 		WorkflowPath: workflowPath,
 		LogsRoot:     logsRoot,
 		Port:         port,
-		Logger:       logger,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "startup failed: %v\n", err)

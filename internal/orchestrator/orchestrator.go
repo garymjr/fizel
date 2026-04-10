@@ -135,14 +135,14 @@ func (s *Service) cleanupMergedWorkspaces() {
 			if os.IsNotExist(err) {
 				continue
 			}
-			s.logger.Error("merged workspace stat failed", "item", item.Identifier, "repo", repo.Key, "workspace", path, "error", err)
+			s.logger.Error("merged workspace stat failed", "item", item.Identifier, "repo", repo.Key, "error", err)
 			continue
 		}
 		if err := manager.Remove(path, ""); err != nil {
-			s.logger.Error("merged workspace remove failed", "item", item.Identifier, "repo", repo.Key, "workspace", path, "error", err)
+			s.logger.Error("merged workspace remove failed", "item", item.Identifier, "repo", repo.Key, "error", err)
 			continue
 		}
-		s.logger.Info("merged workspace removed", "item", item.Identifier, "repo", repo.Key, "workspace", path)
+		s.logger.Info("merged workspace removed", "item", item.Identifier, "repo", repo.Key)
 	}
 }
 
@@ -154,7 +154,7 @@ func (s *Service) startItem(ctx context.Context, item model.Item, repo config.Re
 	go func() {
 		manager := workspace.New(repo.Settings)
 		runner := agent.New(repo.Settings, manager)
-		path, err := runner.Run(ctx, item, s.promptFor(item, repo.Loaded), func(event codex.Event) {
+		_, err := runner.Run(ctx, item, s.promptFor(item, repo.Loaded), func(event codex.Event) {
 			s.mu.Lock()
 			entry := s.running[item.ID]
 			entry.lastEvent = event.Event
@@ -175,7 +175,7 @@ func (s *Service) startItem(ctx context.Context, item model.Item, repo config.Re
 			s.scheduleRetry(item, repo)
 			return
 		}
-		s.logger.Info("agent run completed", "item", item.Identifier, "repo", repo.Key, "workspace", path)
+		s.logger.Info("agent run completed", "item", item.Identifier, "repo", repo.Key)
 		s.render(false)
 	}()
 }

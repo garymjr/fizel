@@ -11,6 +11,8 @@ type snapshotMsg Snapshot
 
 type tickMsg time.Time
 
+type logMsg []string
+
 type dashboardModel struct {
 	settings       config.Settings
 	snapshot       Snapshot
@@ -48,6 +50,12 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case snapshotMsg:
 		m.snapshot = Snapshot(msg)
+		return m, nil
+	case logMsg:
+		m.snapshot.Logs = append(m.snapshot.Logs, []string(msg)...)
+		if len(m.snapshot.Logs) > maxLogLines {
+			m.snapshot.Logs = append([]string(nil), m.snapshot.Logs[len(m.snapshot.Logs)-maxLogLines:]...)
+		}
 		return m, nil
 	case tea.WindowSizeMsg:
 		m.width = msg.Width

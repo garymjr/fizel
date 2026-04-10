@@ -18,6 +18,7 @@ type Snapshot struct {
 	LastRefreshAt time.Time
 	Running       []RunningItem
 	Retrying      []RetryItem
+	Logs          []string
 	TrackerMode   string
 	WatchedRepos  []WatchedRepoStatus
 }
@@ -55,9 +56,13 @@ type Terminal struct {
 	program        *tea.Program
 	started        bool
 	lastSnapshot   Snapshot
+	logLines       []string
+	logPartial     string
 }
 
 var ansiPattern = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
+
+const maxLogLines = 200
 
 func NewTerminal(settings config.Settings) *Terminal {
 	return NewTerminalForWriter(settings, os.Stdout)
@@ -84,6 +89,7 @@ func NewTerminalForWriter(settings config.Settings, out io.Writer) *Terminal {
 
 func (t *Terminal) Render(snapshot Snapshot) {
 	t.mu.Lock()
+	snapshot.Logs = append([]string(nil), t.logLines...)
 	t.lastSnapshot = snapshot
 	if t.interactive {
 		t.ensureProgramLocked()
@@ -96,6 +102,42 @@ func (t *Terminal) Render(snapshot Snapshot) {
 	t.mu.Unlock()
 	fmt.Fprint(t.out, "\033[H\033[2J")
 	fmt.Fprintln(t.out, rendered)
+}
+
+func (t *Terminal) LogWriter() io.Writer {
+	return terminalLogWriter{term: t}
+}
+
+func (t *Terminal) appendLogs(lines []string) {
+	if len(lines) == 0 {
+		return
+	}
+	cleaned := make([]string, 0, len(lines))
+	t.mu.Lock()
+	for _, line := range lines {
+		line = strings.TrimSpace(stripANSI(strings.TrimSuffix(line, "\r")))
+		if line == "" {
+			continue
+		}
+		t.logLines = append(t.logLines, line)
+		cleaned = append(cleaned, line)
+	}
+	if len(cleaned) == 0 {
+		t.mu.Unlock()
+		return
+	}
+	if len(t.logLines) > maxLogLines {
+		t.logLines = append([]string(nil), t.logLines[len(t.logLines)-maxLogLines:]...)
+	}
+	t.lastSnapshot.Logs = append([]string(nil), t.logLines...)
+	program := t.program
+	started := t.started
+	interactive := t.interactive
+	t.mu.Unlock()
+
+	if interactive && started && program != nil {
+		program.Send(logMsg(cleaned))
+	}
 }
 
 func (t *Terminal) ensureProgramLocked() {
@@ -147,6 +189,26 @@ func (t *Terminal) format(snapshot Snapshot, now time.Time, width int) string {
 
 func stripANSI(v string) string {
 	return ansiPattern.ReplaceAllString(v, "")
+}
+
+type terminalLogWriter struct {
+	term *Terminal
+}
+
+func (w terminalLogWriter) Write(p []byte) (int, error) {
+	if w.term == nil {
+		return len(p), nil
+	}
+
+	w.term.mu.Lock()
+	combined := w.term.logPartial + string(p)
+	parts := strings.Split(combined, "\n")
+	w.term.logPartial = parts[len(parts)-1]
+	lines := append([]string(nil), parts[:len(parts)-1]...)
+	w.term.mu.Unlock()
+
+	w.term.appendLogs(lines)
+	return len(p), nil
 }
 
 func truncateText(v string, width int) string {

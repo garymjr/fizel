@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 
 	"github.com/gmurray/fizel/internal/config"
@@ -41,7 +42,7 @@ func New(opts Options) (*App, error) {
 			return nil, err
 		}
 		dashboard := observability.NewTerminal(settings)
-		svc := orchestrator.New(settings, loaded, nil, t, dashboard, opts.Logger)
+		svc := orchestrator.New(settings, loaded, nil, t, dashboard, loggerForTerminal(opts.Logger, dashboard))
 		return &App{orchestrator: svc}, nil
 	}
 
@@ -54,8 +55,19 @@ func New(opts Options) (*App, error) {
 		return nil, err
 	}
 	dashboard := observability.NewTerminal(registry.Defaults)
-	svc := orchestrator.New(registry.Defaults, workflow.Loaded{}, registry.Repos, t, dashboard, opts.Logger)
+	svc := orchestrator.New(registry.Defaults, workflow.Loaded{}, registry.Repos, t, dashboard, loggerForTerminal(opts.Logger, dashboard))
 	return &App{orchestrator: svc}, nil
+}
+
+func loggerForTerminal(logger *slog.Logger, term *observability.Terminal) *slog.Logger {
+	if logger != nil {
+		return logger
+	}
+	out := term.LogWriter()
+	if out == nil {
+		out = io.Discard
+	}
+	return slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{Level: slog.LevelInfo}))
 }
 
 func (a *App) Run(ctx context.Context) error {
