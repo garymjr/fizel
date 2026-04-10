@@ -81,7 +81,7 @@ func (m dashboardModel) renderHeader(width int) string {
 	top := lipgloss.JoinHorizontal(lipgloss.Top, m.styles.title.Render("FIZEL"), "  ", m.styles.subtitle.Render("read-only orchestration dashboard"))
 	bottom := lipgloss.JoinHorizontal(lipgloss.Top, chips...)
 	content := lipgloss.JoinVertical(lipgloss.Left, top, bottom)
-	return m.styles.header.Width(boxContentWidth(width - m.styles.doc.GetHorizontalPadding())).Render(content)
+	return m.styles.header.Width(styleWidthForTotal(m.styles.header, width-m.styles.doc.GetHorizontalPadding())).Render(content)
 }
 
 func (m dashboardModel) renderChip(label, value string, style lipgloss.Style) string {
@@ -109,7 +109,7 @@ func (m dashboardModel) renderBody(width int) string {
 }
 
 func (m dashboardModel) renderRunningPanel(width int) string {
-	contentWidth := boxContentWidth(width)
+	contentWidth := styleWidthForTotal(m.styles.panel, width)
 	rows := make([]string, 0, len(m.snapshot.Running)+3)
 	rows = append(rows, m.styles.panelTitle.Render(fmt.Sprintf("Running Agents  %d", len(m.snapshot.Running))))
 	rows = append(rows, "")
@@ -158,7 +158,7 @@ func (m dashboardModel) renderRunningPanel(width int) string {
 }
 
 func (m dashboardModel) renderRetryPanel(width int) string {
-	contentWidth := boxContentWidth(width)
+	contentWidth := styleWidthForTotal(m.styles.panel, width)
 	rows := make([]string, 0, len(m.snapshot.Retrying)+3)
 	rows = append(rows, m.styles.panelTitle.Render(fmt.Sprintf("Backoff Queue  %d", len(m.snapshot.Retrying))))
 	rows = append(rows, "")
@@ -209,7 +209,7 @@ func (m dashboardModel) renderFooter(width int) string {
 }
 
 func (m dashboardModel) renderLogsPanel(width int) string {
-	contentWidth := boxContentWidth(width)
+	contentWidth := styleWidthForTotal(m.styles.panel, width)
 	rows := []string{
 		m.styles.panelTitle.Render(fmt.Sprintf("Recent Logs  %d", len(m.snapshot.Logs))),
 		"",

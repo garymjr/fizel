@@ -141,7 +141,25 @@ func TestTerminalFormatTruncatesLongFields(t *testing.T) {
 
 	assertContains(t, rendered, "board-1:42-with-a-v…")
 	assertContains(t, rendered, "api-servi…")
-	assertContains(t, rendered, "dispatching-agent-with-an-ext…")
+	assertContains(t, rendered, "dispatching-agent-with-an-extre…")
+}
+
+func TestTerminalFormatKeepsRightBordersAligned(t *testing.T) {
+	term := NewTerminalForWriter(config.Settings{
+		Polling: config.PollingSettings{IntervalMS: 5_000},
+		Agent:   config.AgentSettings{MaxConcurrentAgents: 4},
+	}, nil)
+	now := time.Unix(1_700_000_000, 0)
+
+	rendered := stripANSI(term.format(Snapshot{
+		TrackerMode: "fizzy watched repos",
+		WatchedRepos: []WatchedRepoStatus{
+			{Key: "api", BoardID: "board-1"},
+			{Key: "web", BoardID: "board-2"},
+		},
+	}, now, 140))
+
+	assertRightBordersAligned(t, rendered)
 }
 
 func TestTerminalFormatShowsRecentLogsPanel(t *testing.T) {
@@ -283,5 +301,24 @@ func assertNotContains(t *testing.T, got, want string) {
 	t.Helper()
 	if strings.Contains(got, want) {
 		t.Fatalf("expected output to omit %q\n\n%s", want, got)
+	}
+}
+
+func assertRightBordersAligned(t *testing.T, output string) {
+	t.Helper()
+
+	var expected int
+	for _, line := range strings.Split(output, "\n") {
+		if !strings.ContainsAny(line, "╭╮╰╯│") {
+			continue
+		}
+		width := len([]rune(strings.TrimRight(line, " ")))
+		if expected == 0 {
+			expected = width
+			continue
+		}
+		if width != expected {
+			t.Fatalf("expected aligned right border width %d, got %d for line %q", expected, width, line)
+		}
 	}
 }

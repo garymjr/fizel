@@ -1,6 +1,10 @@
 package observability
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 func max(a, b int) int {
 	if a > b {
@@ -9,8 +13,9 @@ func max(a, b int) int {
 	return b
 }
 
-func boxContentWidth(total int) int {
-	return max(1, total-4)
+func styleWidthForTotal(style lipgloss.Style, total int) int {
+	frameWithoutPadding := style.GetHorizontalFrameSize() - style.GetHorizontalPadding()
+	return max(1, total-frameWithoutPadding)
 }
 
 func padText(v string, width int) string {
