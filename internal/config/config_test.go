@@ -3,7 +3,6 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/gmurray/fizel/internal/workflow"
@@ -193,8 +192,8 @@ watched_repos:
 	}
 }
 
-func TestFromRawRejectsAfterCreateHook(t *testing.T) {
-	_, err := FromRaw(map[string]any{
+func TestFromRawIgnoresAfterCreateHook(t *testing.T) {
+	s, err := FromRaw(map[string]any{
 		"tracker": map[string]any{
 			"kind": "memory",
 		},
@@ -202,8 +201,11 @@ func TestFromRawRejectsAfterCreateHook(t *testing.T) {
 			"after_create": "echo nope",
 		},
 	})
-	if err == nil || !strings.Contains(err.Error(), "hooks.after_create") {
-		t.Fatalf("expected after_create rejection, got %v", err)
+	if err != nil {
+		t.Fatalf("expected after_create to be ignored, got %v", err)
+	}
+	if s.Hooks.BeforeRun != "" || s.Hooks.AfterRun != "" || s.Hooks.BeforeRemove != "" {
+		t.Fatalf("expected deprecated after_create to be ignored, got hooks %+v", s.Hooks)
 	}
 }
 

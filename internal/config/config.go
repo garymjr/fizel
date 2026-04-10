@@ -204,29 +204,11 @@ func decodeMapIntoSettings(raw map[string]any, s *Settings) error {
 	if raw == nil {
 		return nil
 	}
-	if err := rejectDeprecatedHooks(raw); err != nil {
-		return err
-	}
 	blob, err := workflowYAML(raw)
 	if err != nil {
 		return err
 	}
 	return workflowUnmarshal(blob, s)
-}
-
-func rejectDeprecatedHooks(raw map[string]any) error {
-	hooks, ok := raw["hooks"]
-	if !ok {
-		return nil
-	}
-	hookMap, ok := hooks.(map[string]any)
-	if !ok {
-		return nil
-	}
-	if _, ok := hookMap["after_create"]; ok {
-		return errors.New("hooks.after_create is no longer supported; workspaces now start as git worktrees")
-	}
-	return nil
 }
 
 func workflowYAML(raw map[string]any) ([]byte, error) {
